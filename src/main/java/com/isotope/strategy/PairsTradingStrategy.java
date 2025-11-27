@@ -5,84 +5,116 @@ import com.isotope.model.MarketDataEvent;
 import com.isotope.model.OrderEvent;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.LinkedList;
+import java.util.Queue;
+
 /**
- * FIXED Strategy: Pairs Trading (Nifty vs BankNifty).
- * - Removed "Amnesia" bug (Price reset).
- * - Added "Short" side logic.
- * - Tightened thresholds for MFT frequency.
+ * DYNAMIC Strategy: Pairs Trading (Nifty vs BankNifty).
+ * - Self-calibrating: Uses a Simple Moving Average (SMA) to find the 'True Mean'.
+ * - Adapts to any market regime (2023 data, 2025 data, doesn't matter).
  */
 @Slf4j
 public class PairsTradingStrategy implements Strategy {
 
     private OrderPublisher orderPublisher;
-    private final String strategyId = "PairsTrading_Nifty_BankNifty";
+    private final String strategyId = "PairsTrading_Dynamic";
 
-    // State
+    // Prices
     private double lastNiftyPrice = 0.0;
     private double lastBankNiftyPrice = 0.0;
 
-    // Logic Parameters
-    private final double MEAN_RATIO = 2.45; // Approx historical mean
-    private final double THRESHOLD = 0.005; // 0.5% deviation (Much tighter than 0.1)
+    // Dynamic Math Parameters
+    private final int LOOKBACK_PERIOD = 200; // Learn from last 200 ticks
+    private final Queue<Double> ratioHistory = new LinkedList<>();
+    private double sumRatios = 0.0;
 
-    // Position State to prevent spamming the SAME order 100 times/sec
-    private boolean isLongSpread = false;
-    private boolean isShortSpread = false;
+    // Trading Thresholds
+    private final double ENTRY_THRESHOLD = 0.0015; // 0.15% deviation (Sensitive)
+    private final double EXIT_THRESHOLD = 0.0005;  // 0.05% deviation (Take Profit quickly)
+
+    // Position State
+    private enum Position { NONE, LONG_SPREAD, SHORT_SPREAD }
+    private Position currentPosition = Position.NONE;
 
     @Override
     public void onTick(MarketDataEvent event) {
-        // 1. Update Prices
-        if (event.getInstrumentToken() == 256265) { // Nifty
+        // 1. Ingest Prices
+        if (event.getInstrumentToken() == 256265) {
             lastNiftyPrice = event.getLastTradedPrice();
-        } else if (event.getInstrumentToken() == 260105) { // BankNifty
+        } else if (event.getInstrumentToken() == 260105) {
             lastBankNiftyPrice = event.getLastTradedPrice();
         }
 
-        // 2. Only trade if we have BOTH prices
-        if (lastNiftyPrice > 0 && lastBankNiftyPrice > 0) {
-            double currentRatio = lastBankNiftyPrice / lastNiftyPrice;
+        // 2. Wait for valid data
+        if (lastNiftyPrice == 0 || lastBankNiftyPrice == 0) return;
 
-            // Log ratio occasionally for debugging (optional)
-            // log.debug("Ratio: {}", currentRatio);
+        // 3. Calculate Ratio
+        double currentRatio = lastBankNiftyPrice / lastNiftyPrice;
 
-            // --- SIGNAL 1: Spread is too HIGH (BankNifty Expensive) ---
-            // Sell BankNifty, Buy Nifty -> Expect Ratio to go DOWN
-            if (currentRatio > MEAN_RATIO + THRESHOLD) {
-                if (!isShortSpread) {
-                    log.info("ENTRY SHORT SPREAD: Ratio {} > Limit. SELL BN / BUY NIFTY", String.format("%.4f", currentRatio));
+        // 4. Update Moving Average (The "Learning" Part)
+        updateMovingAverage(currentRatio);
 
-                    if (orderPublisher != null) {
-                        // In MFT, we size by Notional Value (e.g. 10 Lakhs each side)
-                        // For test: 25 BN (~10L) vs 50 Nifty (~10L)
-                        orderPublisher.publishOrder("BANKNIFTY", OrderEvent.Type.SELL, 25, lastBankNiftyPrice, strategyId);
-                        orderPublisher.publishOrder("NIFTY", OrderEvent.Type.BUY, 50, lastNiftyPrice, strategyId);
-                    }
+        // 5. Only trade if we have enough data to know the mean
+        if (ratioHistory.size() < LOOKBACK_PERIOD) return;
 
-                    isShortSpread = true;  // Mark position open
-                    isLongSpread = false;  // Flip position if we were long
-                }
-            }
+        double meanRatio = sumRatios / ratioHistory.size();
 
-            // --- SIGNAL 2: Spread is too LOW (BankNifty Cheap) ---
-            // Buy BankNifty, Sell Nifty -> Expect Ratio to go UP
-            else if (currentRatio < MEAN_RATIO - THRESHOLD) {
-                if (!isLongSpread) {
-                    log.info("ENTRY LONG SPREAD: Ratio {} < Limit. BUY BN / SELL NIFTY", String.format("%.4f", currentRatio));
+        // 6. Trading Logic
+        checkSignals(currentRatio, meanRatio);
+    }
 
-                    if (orderPublisher != null) {
-                        orderPublisher.publishOrder("BANKNIFTY", OrderEvent.Type.BUY, 25, lastBankNiftyPrice, strategyId);
-                        orderPublisher.publishOrder("NIFTY", OrderEvent.Type.SELL, 50, lastNiftyPrice, strategyId);
-                    }
+    private void updateMovingAverage(double currentRatio) {
+        ratioHistory.add(currentRatio);
+        sumRatios += currentRatio;
 
-                    isLongSpread = true;   // Mark position open
-                    isShortSpread = false; // Flip position if we were short
-                }
-            }
-
-            // --- SIGNAL 3: Mean Reversion (Take Profit) ---
-            // If ratio comes back to normal, close everything (Optional)
-            // Ideally, MFT strategies flip Long <-> Short rather than going flat to save fees.
+        if (ratioHistory.size() > LOOKBACK_PERIOD) {
+            double old = ratioHistory.poll();
+            sumRatios -= old;
         }
+    }
+
+    private void checkSignals(double current, double mean) {
+        double divergence = current - mean;
+
+        // --- LOGIC: SHORT SPREAD (Betting Ratio goes DOWN) ---
+        if (currentPosition == Position.NONE && divergence > ENTRY_THRESHOLD) {
+            log.info("ENTRY SHORT: Ratio {} is too High (Mean {}). SELL BN / BUY NIFTY", fmt(current), fmt(mean));
+            execute(OrderEvent.Type.SELL, "BANKNIFTY", 25, lastBankNiftyPrice);
+            execute(OrderEvent.Type.BUY, "NIFTY", 50, lastNiftyPrice);
+            currentPosition = Position.SHORT_SPREAD;
+        }
+        // Exit Short
+        else if (currentPosition == Position.SHORT_SPREAD && divergence < EXIT_THRESHOLD) {
+            log.info("EXIT SHORT: Ratio {} returned to Mean {}. PROFIT.", fmt(current), fmt(mean));
+            execute(OrderEvent.Type.BUY, "BANKNIFTY", 25, lastBankNiftyPrice); // Cover
+            execute(OrderEvent.Type.SELL, "NIFTY", 50, lastNiftyPrice);       // Sell
+            currentPosition = Position.NONE;
+        }
+
+        // --- LOGIC: LONG SPREAD (Betting Ratio goes UP) ---
+        else if (currentPosition == Position.NONE && divergence < -ENTRY_THRESHOLD) {
+            log.info("ENTRY LONG: Ratio {} is too Low (Mean {}). BUY BN / SELL NIFTY", fmt(current), fmt(mean));
+            execute(OrderEvent.Type.BUY, "BANKNIFTY", 25, lastBankNiftyPrice);
+            execute(OrderEvent.Type.SELL, "NIFTY", 50, lastNiftyPrice);
+            currentPosition = Position.LONG_SPREAD;
+        }
+        // Exit Long
+        else if (currentPosition == Position.LONG_SPREAD && divergence > -EXIT_THRESHOLD) {
+            log.info("EXIT LONG: Ratio {} returned to Mean {}. PROFIT.", fmt(current), fmt(mean));
+            execute(OrderEvent.Type.SELL, "BANKNIFTY", 25, lastBankNiftyPrice); // Sell
+            execute(OrderEvent.Type.BUY, "NIFTY", 50, lastNiftyPrice);          // Cover
+            currentPosition = Position.NONE;
+        }
+    }
+
+    private void execute(OrderEvent.Type type, String symbol, int qty, double price) {
+        if (orderPublisher != null) {
+            orderPublisher.publishOrder(symbol, type, qty, price, strategyId);
+        }
+    }
+
+    private String fmt(double val) {
+        return String.format("%.4f", val);
     }
 
     @Override
