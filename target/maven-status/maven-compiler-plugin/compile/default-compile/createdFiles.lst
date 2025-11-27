@@ -14,10 +14,10 @@ com/isotope/core/IsotopeEngine.class
 com/isotope/strategy/Strategy.class
 com/isotope/strategy/StrategyLoader.class
 META-INF/spring-configuration-metadata.json
-com/isotope/model/OrderEvent$Type.class
 com/isotope/adapter/MarketDataProducer.class
-com/isotope/adapter/YahooFinanceProducer.class
+com/isotope/model/OrderEvent$Type.class
 com/isotope/core/OrderPublisher.class
+com/isotope/adapter/YahooFinanceProducer.class
 com/isotope/model/OrderEvent.class
 com/isotope/controller/HealthController.class
 com/isotope/config/AppConfig$KiteConfig.class

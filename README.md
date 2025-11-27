@@ -56,7 +56,7 @@ Use the Python utility to download market data (requires `yfinance`).
 
 ```bash
 # Install dependencies
-pip install yfinance pandas
+pip3 install yfinance pandas
 
 # Run the fetcher
 python3 tools/fetch_data.py
@@ -77,7 +77,7 @@ Visualize the backtest performance using the Streamlit dashboard.
 
 ```bash
 # Install dependencies
-pip install streamlit pandas
+pip3 install streamlit pandas
 
 # Launch the dashboard
 python3 -m streamlit run tools/dashboard.py
