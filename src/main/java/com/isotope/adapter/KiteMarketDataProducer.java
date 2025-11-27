@@ -2,48 +2,61 @@ package com.isotope.adapter;
 
 import com.isotope.model.MarketDataEvent;
 import com.lmax.disruptor.RingBuffer;
-import com.zerodhatech.ticker.KiteTicker;
+import com.zerodhatech.kiteconnect.KiteConnect;
 import com.zerodhatech.models.Tick;
-import com.zerodhatech.kiteconnect.kitehttp.exceptions.KiteException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 
-/**
- * Wrapper for KiteTicker that pushes ticks to the Input RingBuffer.
- */
 @Slf4j
-public class MarketDataAdapter {
-    private final RingBuffer<MarketDataEvent> ringBuffer;
-    // Mocking KiteTicker for now as we don't have real credentials or network
-    // In production this would extend or contain KiteTicker
+public class KiteMarketDataProducer implements MarketDataProducer {
 
-    public MarketDataAdapter(RingBuffer<MarketDataEvent> ringBuffer) {
+    private final KiteConnect kiteConnect;
+    private RingBuffer<MarketDataEvent> ringBuffer;
+
+    public KiteMarketDataProducer(KiteConnect kiteConnect) {
+        this.kiteConnect = kiteConnect;
+    }
+
+    @Override
+    public void connect() {
+        log.info("Connecting to Kite Ticker...");
+        // In a real implementation:
+        // KiteTicker ticker = new KiteTicker(kiteConnect.getAccessToken(), kiteConnect.getApiKey());
+        // ticker.setOnTickerArrivalListener(this::onTicks);
+        // ticker.connect();
+    }
+
+    @Override
+    public void subscribe(String... symbols) {
+        log.info("Subscribing to symbols via Kite: {}", (Object) symbols);
+        // Convert symbols to tokens and subscribe
+    }
+
+    @Override
+    public void startPublishing(RingBuffer<MarketDataEvent> ringBuffer) {
         this.ringBuffer = ringBuffer;
+        log.info("KiteMarketDataProducer started publishing to RingBuffer.");
     }
 
     /**
-     * Callback method simulating what happens when KiteTicker receives ticks.
-     * This method is responsible for translating external Tick objects into
-     * zero-GC events on the RingBuffer.
+     * Callback for Kite Ticker
      */
     public void onTicks(ArrayList<Tick> ticks) {
+        if (ringBuffer == null) return;
+
         for (Tick tick : ticks) {
             publishTick(tick);
         }
     }
 
     private void publishTick(Tick tick) {
-        long sequence = ringBuffer.next();  // Grab the next sequence
+        long sequence = ringBuffer.next();
         try {
-            MarketDataEvent event = ringBuffer.get(sequence); // Get the entry in the Disruptor
-
-            // Copy data from the external Tick object to our internal pre-allocated event
-            // Note: We avoid 'new' here.
+            MarketDataEvent event = ringBuffer.get(sequence);
             event.setInstrumentToken(tick.getInstrumentToken());
             event.setLastTradedPrice(tick.getLastTradedPrice());
             event.setVolume(tick.getVolumeTradedToday());
-            // event.setLastTradedTime(tick.getTickTimestamp().getTime()); // Assuming date is not null
 
             if (tick.getMarketDepth() != null && tick.getMarketDepth().get("buy") != null && !tick.getMarketDepth().get("buy").isEmpty()) {
                 event.setBidPrice(tick.getMarketDepth().get("buy").getFirst().getPrice());
