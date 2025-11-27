@@ -33,6 +33,7 @@ public class AppConfig {
     public static class StrategyConfig {
         private boolean enabled;
         private double riskLimit;
+        private double allocationPerLeg = 1500000.0;
     }
 
     @Data
