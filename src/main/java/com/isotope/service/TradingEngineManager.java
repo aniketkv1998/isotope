@@ -1,6 +1,7 @@
 package com.isotope.service;
 
 import com.isotope.adapter.MarketDataProducer;
+import com.isotope.adapter.OrderExecutionAdapter;
 import com.isotope.config.AppConfig;
 import com.isotope.core.IsotopeEngine;
 import com.isotope.strategy.PairsTradingStrategy;
@@ -28,8 +29,11 @@ public class TradingEngineManager {
     public void init() {
         log.info("Initializing Trading Engine Manager...");
 
+        double capital = appConfig.getBacktest().getInitialCapital();
+        OrderExecutionAdapter adapter = new OrderExecutionAdapter(feeCalculator, capital);
+
         // 1. Instantiate Core Engine (Pure Java)
-        isotopeEngine = new IsotopeEngine(appConfig, feeCalculator);
+        isotopeEngine = new IsotopeEngine(adapter);
 
         // 2. Wire up Strategies
         PairsTradingStrategy strategy = new PairsTradingStrategy();

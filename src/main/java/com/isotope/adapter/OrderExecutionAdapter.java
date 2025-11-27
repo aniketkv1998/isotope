@@ -1,6 +1,5 @@
 package com.isotope.adapter;
 
-import com.isotope.config.AppConfig;
 import com.isotope.model.OrderEvent;
 import com.isotope.service.IndianFuturesFeeCalculator;
 import com.lmax.disruptor.EventHandler;
@@ -8,31 +7,31 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Consumes OrderEvents and writes them to a CSV file for the Dashboard.
- */
 @Slf4j
 public class OrderExecutionAdapter implements EventHandler<OrderEvent> {
 
     private BufferedWriter csvWriter;
     private final IndianFuturesFeeCalculator feeCalculator;
-    private double currentBalance;
+    private double runningBalance; // Comes from Config now
 
-    public OrderExecutionAdapter(AppConfig appConfig, IndianFuturesFeeCalculator feeCalculator) {
+    // Position Tracking: Symbol -> Average Entry Price
+    private final Map<String, Double> entryPrices = new HashMap<>();
+    // Position Tracking: Symbol -> Net Quantity (+Long, -Short)
+    private final Map<String, Integer> positions = new HashMap<>();
+
+    public OrderExecutionAdapter(IndianFuturesFeeCalculator feeCalculator, double initialCapital) {
         this.feeCalculator = feeCalculator;
-        this.currentBalance = appConfig.getBacktest().getInitialCapital();
-        try {
-            // 1. Create 'trades.csv' in the project root folder
-            // 'false' means we overwrite the file every time we restart the app
-            csvWriter = new BufferedWriter(new FileWriter("trades.csv", false));
+        this.runningBalance = initialCapital;
 
-            // 2. Write the Header Row so Python knows the columns
+        try {
+            csvWriter = new BufferedWriter(new FileWriter("trades.csv", false));
             csvWriter.write("timestamp,strategy_id,symbol,action,quantity,price,fees,net_cash_flow,running_balance\n");
             csvWriter.flush();
-            log.info("Created trades.csv successfully.");
         } catch (IOException e) {
-            log.error("Failed to initialize trades.csv writer", e);
+            log.error("Failed to init CSV", e);
         }
     }
 
@@ -40,41 +39,64 @@ public class OrderExecutionAdapter implements EventHandler<OrderEvent> {
     public void onEvent(OrderEvent event, long sequence, boolean endOfBatch) {
         if (event.getType() == null) return;
 
-        double turnover = event.getPrice() * event.getQuantity();
-        double fees = feeCalculator.calculateTotalFee(event.getType(), event.getPrice(), event.getQuantity());
-        double netCashFlow = 0.0;
-
-        if (event.getType() == OrderEvent.Type.BUY) {
-            netCashFlow = -turnover - fees;
-        } else if (event.getType() == OrderEvent.Type.SELL) {
-            netCashFlow = turnover - fees;
-        }
-
-        currentBalance += netCashFlow;
-
         try {
-            // Log to Console (for you to see)
-            log.info("EXECUTING: {} {} @ {}, Fees: {}, Balance: {}", event.getType(), event.getTradingSymbol(), event.getPrice(), fees, currentBalance);
+            double price = event.getPrice();
+            int quantity = event.getQuantity();
+            String symbol = event.getTradingSymbol();
 
-            // 3. Write to CSV (for the Dashboard to see)
-            if (csvWriter != null) {
-                // Format: timestamp,strategy_id,symbol,action,quantity,price,fees,net_cash_flow,running_balance
-                String line = String.format("%d,%s,%s,%s,%d,%.2f,%.2f,%.2f,%.2f%n",
-                        event.getTimestamp(),
-                        event.getStrategyId(),
-                        event.getTradingSymbol(),
-                        event.getType(),
-                        event.getQuantity(),
-                        event.getPrice(),
-                        fees,
-                        netCashFlow,
-                        currentBalance
-                );
-                csvWriter.write(line);
-                csvWriter.flush(); // Force save to disk immediately
+            // 1. Fees (Always Paid)
+            double fees = feeCalculator.calculateTotalFee(event.getType(), price, quantity);
+            double netCashFlow = -fees;
+
+            // 2. PnL Logic (Realized only on Closing)
+            // Determine signed quantity (+ for Buy, - for Sell)
+            int tradeQty = (event.getType() == OrderEvent.Type.BUY) ? quantity : -quantity;
+            int currentPos = positions.getOrDefault(symbol, 0);
+            double currentEntry = entryPrices.getOrDefault(symbol, 0.0);
+
+            // Check if this trade reduces our position (Closing)
+            boolean isClosing = (currentPos > 0 && tradeQty < 0) || (currentPos < 0 && tradeQty > 0);
+
+            if (isClosing) {
+                // We are realizing profit/loss
+                int qtyClosing = Math.min(Math.abs(currentPos), Math.abs(tradeQty));
+                double pnl = 0.0;
+
+                if (currentPos > 0) { // Long Closing
+                    pnl = (price - currentEntry) * qtyClosing;
+                } else { // Short Covering
+                    pnl = (currentEntry - price) * qtyClosing;
+                }
+
+                netCashFlow += pnl; // Add Profit (or subtract Loss)
+
+                // Update Position State
+                int newPos = currentPos + tradeQty;
+                positions.put(symbol, newPos);
+                if (newPos == 0) entryPrices.remove(symbol);
+
+            } else {
+                // Opening new position (No Cash Flow impact except Fees)
+                // Update Weighted Average Price
+                double totalVal = (Math.abs(currentPos) * currentEntry) + (Math.abs(tradeQty) * price);
+                int newTotalQty = Math.abs(currentPos) + Math.abs(tradeQty);
+                entryPrices.put(symbol, totalVal / newTotalQty);
+                positions.put(symbol, currentPos + tradeQty);
             }
-        } catch (IOException e) {
-            log.error("Failed to write to trades.csv", e);
+
+            // 3. Update Balance
+            runningBalance += netCashFlow;
+
+            // 4. Log
+            if (csvWriter != null) {
+                csvWriter.write(String.format("%d,%s,%s,%s,%d,%.2f,%.2f,%.2f,%.2f%n",
+                        event.getTimestamp(), // Uses CSV Timestamp
+                        event.getStrategyId(), symbol, event.getType(), quantity, price, fees, netCashFlow, runningBalance));
+                csvWriter.flush();
+            }
+
+        } catch (Exception e) {
+            log.error("Trade processing error", e);
         }
     }
 }

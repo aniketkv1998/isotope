@@ -36,8 +36,11 @@ public class PairsTradingStrategy implements Strategy {
     private enum Position { NONE, LONG_SPREAD, SHORT_SPREAD }
     private Position currentPosition = Position.NONE;
 
+    private long currentTickTime = 0;
+
     @Override
     public void onTick(MarketDataEvent event) {
+        currentTickTime = event.getLastTradedTime();
         // 1. Ingest Prices
         if (event.getInstrumentToken() == 256265) {
             lastNiftyPrice = event.getLastTradedPrice();
@@ -109,7 +112,7 @@ public class PairsTradingStrategy implements Strategy {
 
     private void execute(OrderEvent.Type type, String symbol, int qty, double price) {
         if (orderPublisher != null) {
-            orderPublisher.publishOrder(symbol, type, qty, price, strategyId);
+            orderPublisher.publishOrder(symbol, type, qty, price, strategyId, currentTickTime);
         }
     }
 

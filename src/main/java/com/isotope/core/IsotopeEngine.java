@@ -35,7 +35,7 @@ public class IsotopeEngine implements OrderPublisher {
 
     private static final int BUFFER_SIZE = 1024; // Must be power of 2
 
-    public IsotopeEngine(AppConfig appConfig, IndianFuturesFeeCalculator feeCalculator) {
+    public IsotopeEngine(OrderExecutionAdapter executionAdapter) {
         // 1. Setup Output Disruptor (Orders) first, so strategies can use it
         OrderEventFactory orderFactory = new OrderEventFactory();
         orderDisruptor = new Disruptor<>(
@@ -47,7 +47,7 @@ public class IsotopeEngine implements OrderPublisher {
         );
 
         // Connect Consumer: OrderExecutionAdapter
-        orderDisruptor.handleEventsWith(new OrderExecutionAdapter(appConfig, feeCalculator));
+        orderDisruptor.handleEventsWith(executionAdapter);
 
         orderRingBuffer = orderDisruptor.getRingBuffer();
 
@@ -118,7 +118,7 @@ public class IsotopeEngine implements OrderPublisher {
     // --- OrderPublisher Implementation ---
 
     @Override
-    public void publishOrder(String symbol, OrderEvent.Type type, int quantity, double price, String strategyId) {
+    public void publishOrder(String symbol, OrderEvent.Type type, int quantity, double price, String strategyId, long timestamp) {
         long sequence = orderRingBuffer.next();
         try {
             OrderEvent event = orderRingBuffer.get(sequence);
@@ -127,7 +127,9 @@ public class IsotopeEngine implements OrderPublisher {
             event.setQuantity(quantity);
             event.setPrice(price);
             event.setStrategyId(strategyId);
-            event.setTimestamp(System.currentTimeMillis());
+
+            // FIX: Use the historical time passed from the strategy, NOT system time
+            event.setTimestamp(timestamp);
         } finally {
             orderRingBuffer.publish(sequence);
         }

@@ -9,7 +9,6 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -50,7 +49,7 @@ public class CsvMarketDataProducer implements MarketDataProducer {
             String line;
             boolean firstLine = true;
             long previousTimestamp = -1;
-            long previousSystemTime = -1;
+            long rowCount = 0;
 
             double speedFactor = 1.0;
             boolean isMax = "MAX".equalsIgnoreCase(replaySpeedStr);
@@ -62,9 +61,7 @@ public class CsvMarketDataProducer implements MarketDataProducer {
                 }
             }
 
-            // Headers: timestamp, symbol, open, high, low, close, volume
-            // Example: 2023-10-27T10:00:00,NIFTY,19500,19600,19400,19550,1000
-
+            // Headers: timestamp,symbol,open,high,low,close,volume
             while (running && (line = br.readLine()) != null) {
                 if (firstLine) {
                     if (line.toLowerCase().startsWith("timestamp")) {
@@ -83,9 +80,11 @@ public class CsvMarketDataProducer implements MarketDataProducer {
                     double close = Double.parseDouble(parts[5]);
                     long volume = Long.parseLong(parts[6]);
 
-                    LocalDateTime timestamp = LocalDateTime.parse(timeStr); // ISO_LOCAL_DATE_TIME by default
+                    // 1. Parse Historical Time
+                    LocalDateTime timestamp = LocalDateTime.parse(timeStr); // Expects ISO format 2023-10-27T10:00:00
                     long currentEventTime = timestamp.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
 
+                    // 2. Replay Delay Logic
                     if (!isMax && previousTimestamp != -1) {
                         long timeDiff = currentEventTime - previousTimestamp;
                         if (timeDiff > 0) {
@@ -98,38 +97,46 @@ public class CsvMarketDataProducer implements MarketDataProducer {
 
                     previousTimestamp = currentEventTime;
 
-                    publishEvent(symbol, close, volume);
+                    // 3. Publish with HISTORICAL Time
+                    publishEvent(symbol, close, volume, currentEventTime);
+
+                    rowCount++;
+                    if (rowCount % 1000 == 0) {
+                        log.info("Processed {} rows. Current Hist Time: {}", rowCount, timeStr);
+                    }
 
                 } catch (Exception e) {
                     log.error("Error parsing CSV line: {}", line, e);
                 }
             }
-            log.info("CSV Playback finished.");
+            log.info("CSV Playback finished. Total Rows: {}", rowCount);
 
         } catch (Exception e) {
             log.error("Error reading CSV file", e);
         }
     }
 
-    private void publishEvent(String symbol, double price, long volume) {
+    private void publishEvent(String symbol, double price, long volume, long historicalTime) {
         long sequence = ringBuffer.next();
         try {
             MarketDataEvent event = ringBuffer.get(sequence);
 
-            // FIX: Map text symbols to the IDs the Strategy expects
+            // Map text symbols to IDs
             if ("NIFTY".equalsIgnoreCase(symbol)) {
                 event.setInstrumentToken(256265);
             } else if ("BANKNIFTY".equalsIgnoreCase(symbol)) {
                 event.setInstrumentToken(260105);
             } else {
-                event.setInstrumentToken(symbol.hashCode()); // Fallback
+                event.setInstrumentToken(symbol.hashCode());
             }
 
             event.setLastTradedPrice(price);
             event.setVolume(volume);
-            event.setLastTradedTime(System.currentTimeMillis());
 
-            // Clear other fields to prevent dirty reads
+            // FIX: Use the CSV time, NOT System.currentTimeMillis()
+            event.setLastTradedTime(historicalTime);
+
+            // Clear other fields
             event.setBidPrice(0);
             event.setAskPrice(0);
             event.setBidQuantity(0);
