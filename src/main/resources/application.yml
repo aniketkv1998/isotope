@@ -3,7 +3,8 @@ engine:
     type: CSV
     csv:
       file-path: market_data.csv
-      replay-speed: 1x
+#      replay-speed: 1x
+      replay-speed: MAX
 
 isotope:
   kite:
@@ -13,3 +14,8 @@ isotope:
   strategy:
     enabled: true
     risk-limit: 10000
+
+logging:
+  level:
+    root: INFO
+    com.isotope: DEBUG

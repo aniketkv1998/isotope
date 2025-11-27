@@ -14,7 +14,7 @@ def fetch_and_save_data():
     for ticker, name in symbols.items():
         try:
             # Fetch last 7 days of 1m data
-            data = yf.download(ticker, period="7d", interval="1m", progress=False)
+            data = yf.download(ticker, period="7d", interval="1m", end="2025-11-27", progress=False)
 
             if data.empty:
                 print(f"Warning: No data found for {ticker}")
