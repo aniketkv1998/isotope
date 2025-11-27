@@ -31,6 +31,7 @@ public class IsotopeEngine implements OrderPublisher {
     @Getter
     private final RingBuffer<OrderEvent> orderRingBuffer;
 
+    @Getter
     private final MarketDataAdapter marketDataAdapter;
     private final List<Strategy> strategies = new ArrayList<>();
 
@@ -94,10 +95,6 @@ public class IsotopeEngine implements OrderPublisher {
         log.info("Registered strategy: {}", strategy.getStrategyId());
     }
 
-    public MarketDataAdapter getMarketDataAdapter() {
-        return marketDataAdapter;
-    }
-
     /**
      * Internal EventHandler that dispatches ticks to all registered strategies.
      * This runs on the MarketData Processor Thread (Single Writer Principle).
@@ -105,11 +102,11 @@ public class IsotopeEngine implements OrderPublisher {
     private class StrategyEventHandler implements EventHandler<MarketDataEvent> {
         @Override
         public void onEvent(MarketDataEvent event, long sequence, boolean endOfBatch) {
-            for (int i = 0; i < strategies.size(); i++) {
+            for (Strategy strategy : strategies) {
                 try {
-                    strategies.get(i).onTick(event);
+                    strategy.onTick(event);
                 } catch (Exception e) {
-                    log.error("Error in strategy " + strategies.get(i).getStrategyId(), e);
+                    log.error("Error in strategy {}", strategy.getStrategyId(), e);
                 }
             }
         }
