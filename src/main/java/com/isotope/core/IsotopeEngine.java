@@ -13,6 +13,7 @@ import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
+import com.zerodhatech.kiteconnect.KiteConnect;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,12 +31,17 @@ public class IsotopeEngine implements OrderPublisher {
     @Getter
     private final RingBuffer<OrderEvent> orderRingBuffer;
 
+    @Getter
     private final MarketDataAdapter marketDataAdapter;
     private final List<Strategy> strategies = new ArrayList<>();
 
     private static final int BUFFER_SIZE = 1024; // Must be power of 2
 
-    public IsotopeEngine() {
+    private final KiteConnect kiteConnect;
+
+    public IsotopeEngine(KiteConnect kiteConnect) {
+        this.kiteConnect = kiteConnect;
+
         // 1. Setup Output Disruptor (Orders) first, so strategies can use it
         OrderEventFactory orderFactory = new OrderEventFactory();
         orderDisruptor = new Disruptor<>(
@@ -89,10 +95,6 @@ public class IsotopeEngine implements OrderPublisher {
         log.info("Registered strategy: {}", strategy.getStrategyId());
     }
 
-    public MarketDataAdapter getMarketDataAdapter() {
-        return marketDataAdapter;
-    }
-
     /**
      * Internal EventHandler that dispatches ticks to all registered strategies.
      * This runs on the MarketData Processor Thread (Single Writer Principle).
@@ -100,11 +102,11 @@ public class IsotopeEngine implements OrderPublisher {
     private class StrategyEventHandler implements EventHandler<MarketDataEvent> {
         @Override
         public void onEvent(MarketDataEvent event, long sequence, boolean endOfBatch) {
-            for (int i = 0; i < strategies.size(); i++) {
+            for (Strategy strategy : strategies) {
                 try {
-                    strategies.get(i).onTick(event);
+                    strategy.onTick(event);
                 } catch (Exception e) {
-                    log.error("Error in strategy " + strategies.get(i).getStrategyId(), e);
+                    log.error("Error in strategy {}", strategy.getStrategyId(), e);
                 }
             }
         }

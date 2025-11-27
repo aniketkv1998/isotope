@@ -1,0 +1,48 @@
+{
+  "groups": [
+    {
+      "name": "isotope",
+      "type": "com.isotope.config.AppConfig",
+      "sourceType": "com.isotope.config.AppConfig"
+    },
+    {
+      "name": "isotope.kite",
+      "type": "com.isotope.config.AppConfig$KiteConfig",
+      "sourceType": "com.isotope.config.AppConfig"
+    },
+    {
+      "name": "isotope.strategy",
+      "type": "com.isotope.config.AppConfig$StrategyConfig",
+      "sourceType": "com.isotope.config.AppConfig"
+    }
+  ],
+  "properties": [
+    {
+      "name": "isotope.kite.access-token",
+      "type": "java.lang.String",
+      "sourceType": "com.isotope.config.AppConfig$KiteConfig"
+    },
+    {
+      "name": "isotope.kite.api-key",
+      "type": "java.lang.String",
+      "sourceType": "com.isotope.config.AppConfig$KiteConfig"
+    },
+    {
+      "name": "isotope.kite.api-secret",
+      "type": "java.lang.String",
+      "sourceType": "com.isotope.config.AppConfig$KiteConfig"
+    },
+    {
+      "name": "isotope.strategy.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.isotope.config.AppConfig$StrategyConfig",
+      "defaultValue": false
+    },
+    {
+      "name": "isotope.strategy.risk-limit",
+      "type": "java.lang.Double",
+      "sourceType": "com.isotope.config.AppConfig$StrategyConfig"
+    }
+  ],
+  "hints": []
+}

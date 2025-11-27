@@ -46,12 +46,12 @@ public class MarketDataAdapter {
             // event.setLastTradedTime(tick.getTickTimestamp().getTime()); // Assuming date is not null
 
             if (tick.getMarketDepth() != null && tick.getMarketDepth().get("buy") != null && !tick.getMarketDepth().get("buy").isEmpty()) {
-                 event.setBidPrice(tick.getMarketDepth().get("buy").get(0).getPrice());
-                 event.setBidQuantity(tick.getMarketDepth().get("buy").get(0).getQuantity());
+                event.setBidPrice(tick.getMarketDepth().get("buy").getFirst().getPrice());
+                event.setBidQuantity(tick.getMarketDepth().get("buy").getFirst().getQuantity());
             }
-             if (tick.getMarketDepth() != null && tick.getMarketDepth().get("sell") != null && !tick.getMarketDepth().get("sell").isEmpty()) {
-                 event.setAskPrice(tick.getMarketDepth().get("sell").get(0).getPrice());
-                 event.setAskQuantity(tick.getMarketDepth().get("sell").get(0).getQuantity());
+            if (tick.getMarketDepth() != null && tick.getMarketDepth().get("sell") != null && !tick.getMarketDepth().get("sell").isEmpty()) {
+                event.setAskPrice(tick.getMarketDepth().get("sell").getFirst().getPrice());
+                event.setAskQuantity(tick.getMarketDepth().get("sell").getFirst().getQuantity());
             }
 
         } finally {
