@@ -13,6 +13,7 @@ public class AppConfig {
 
     private KiteConfig kite = new KiteConfig();
     private StrategyConfig strategy = new StrategyConfig();
+    private BacktestConfig backtest = new BacktestConfig();
 
     @Bean
     public KiteConnect kiteConnect() {
@@ -32,5 +33,10 @@ public class AppConfig {
     public static class StrategyConfig {
         private boolean enabled;
         private double riskLimit;
+    }
+
+    @Data
+    public static class BacktestConfig {
+        private double initialCapital = 1000000.0;
     }
 }

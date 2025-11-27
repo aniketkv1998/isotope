@@ -14,8 +14,10 @@ isotope:
   strategy:
     enabled: true
     risk-limit: 10000
+  backtest:
+    initial-capital: 10000.0
 
 logging:
   level:
     root: INFO
-    com.isotope: DEBUG
+#    com.isotope: DEBUG
