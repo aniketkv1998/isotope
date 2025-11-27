@@ -14,8 +14,9 @@ isotope:
   strategy:
     enabled: true
     risk-limit: 10000
+    allocation-per-leg: 2000000.0
   backtest:
-    initial-capital: 10000.0
+    initial-capital: 200000.0
 
 logging:
   level:

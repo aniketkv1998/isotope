@@ -36,7 +36,7 @@ public class TradingEngineManager {
         isotopeEngine = new IsotopeEngine(adapter);
 
         // 2. Wire up Strategies
-        PairsTradingStrategy strategy = new PairsTradingStrategy();
+        PairsTradingStrategy strategy = new PairsTradingStrategy(appConfig.getStrategy().getAllocationPerLeg());
         isotopeEngine.registerStrategy(strategy);
 
         // 3. Start the Engine on a dedicated thread
