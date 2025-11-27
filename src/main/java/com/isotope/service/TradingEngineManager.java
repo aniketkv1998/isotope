@@ -20,6 +20,7 @@ public class TradingEngineManager {
 
     private final AppConfig appConfig;
     private final MarketDataProducer marketDataProducer; // Injected by Spring (Kite, CSV, or Yahoo)
+    private final IndianFuturesFeeCalculator feeCalculator;
     private IsotopeEngine isotopeEngine;
     private final ExecutorService engineExecutor = Executors.newSingleThreadExecutor();
 
@@ -28,7 +29,7 @@ public class TradingEngineManager {
         log.info("Initializing Trading Engine Manager...");
 
         // 1. Instantiate Core Engine (Pure Java)
-        isotopeEngine = new IsotopeEngine();
+        isotopeEngine = new IsotopeEngine(appConfig, feeCalculator);
 
         // 2. Wire up Strategies
         PairsTradingStrategy strategy = new PairsTradingStrategy();

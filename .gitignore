@@ -4,3 +4,5 @@
 target/**
 .idea/**
 isotope-engine.iml
+trades.csv
+app.log
