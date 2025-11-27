@@ -1,12 +1,15 @@
+engine:
+  data-source:
+    type: CSV
+    csv:
+      file-path: market_data.csv
+      replay-speed: 1x
+
 isotope:
   kite:
-    api-key: "REPLACE_WITH_YOUR_API_KEY"
-    access-token: "REPLACE_WITH_YOUR_ACCESS_TOKEN"
-    api-secret: "REPLACE_WITH_YOUR_API_SECRET"
-
+    api-key: "xxx"
+    access-token: "xxx"
+    api-secret: "xxx"
   strategy:
     enabled: true
-    risk-limit: 10000.0
-
-server:
-  port: 8080
+    risk-limit: 10000
