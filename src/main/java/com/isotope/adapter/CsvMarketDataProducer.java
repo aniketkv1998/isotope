@@ -111,15 +111,43 @@ public class CsvMarketDataProducer implements MarketDataProducer {
         }
     }
 
+//    private void publishEvent(String symbol, double price, long volume) {
+//        long sequence = ringBuffer.next();
+//        try {
+//            MarketDataEvent event = ringBuffer.get(sequence);
+//            event.setInstrumentToken(symbol.hashCode()); // Simple mapping
+//            event.setLastTradedPrice(price);
+//            event.setVolume(volume);
+//            event.setLastTradedTime(System.currentTimeMillis());
+//            // Clear other fields
+//            event.setBidPrice(0);
+//            event.setAskPrice(0);
+//            event.setBidQuantity(0);
+//            event.setAskQuantity(0);
+//        } finally {
+//            ringBuffer.publish(sequence);
+//        }
+//    }
+
     private void publishEvent(String symbol, double price, long volume) {
         long sequence = ringBuffer.next();
         try {
             MarketDataEvent event = ringBuffer.get(sequence);
-            event.setInstrumentToken(symbol.hashCode()); // Simple mapping
+
+            // FIX: Map text symbols to the IDs the Strategy expects
+            if ("NIFTY".equalsIgnoreCase(symbol)) {
+                event.setInstrumentToken(256265);
+            } else if ("BANKNIFTY".equalsIgnoreCase(symbol)) {
+                event.setInstrumentToken(260105);
+            } else {
+                event.setInstrumentToken(symbol.hashCode()); // Fallback
+            }
+
             event.setLastTradedPrice(price);
             event.setVolume(volume);
             event.setLastTradedTime(System.currentTimeMillis());
-            // Clear other fields
+
+            // Clear other fields to prevent dirty reads
             event.setBidPrice(0);
             event.setAskPrice(0);
             event.setBidQuantity(0);
