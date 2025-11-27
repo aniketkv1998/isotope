@@ -18,6 +18,11 @@ public class PairsTradingStrategy implements Strategy {
 
     private OrderPublisher orderPublisher;
     private final String strategyId = "PairsTrading_Dynamic";
+    private final double allocationPerLeg;
+
+    public PairsTradingStrategy(double allocationPerLeg) {
+        this.allocationPerLeg = allocationPerLeg;
+    }
 
     // Prices
     private double lastNiftyPrice = 0.0;
@@ -35,6 +40,9 @@ public class PairsTradingStrategy implements Strategy {
     // Position State
     private enum Position { NONE, LONG_SPREAD, SHORT_SPREAD }
     private Position currentPosition = Position.NONE;
+
+    private int currentBnQty = 0;
+    private int currentNiftyQty = 0;
 
     private long currentTickTime = 0;
 
@@ -79,34 +87,56 @@ public class PairsTradingStrategy implements Strategy {
     private void checkSignals(double current, double mean) {
         double divergence = current - mean;
 
+        // Guard against zero prices
+        if (lastBankNiftyPrice <= 0 || lastNiftyPrice <= 0) {
+            log.warn("Invalid prices: BN={}, Nifty={}. Skipping signal check.", lastBankNiftyPrice, lastNiftyPrice);
+            return;
+        }
+
         // --- LOGIC: SHORT SPREAD (Betting Ratio goes DOWN) ---
         if (currentPosition == Position.NONE && divergence > ENTRY_THRESHOLD) {
+            // Calculate entry quantities
+            currentBnQty = (int) (allocationPerLeg / lastBankNiftyPrice);
+            currentNiftyQty = (int) (allocationPerLeg / lastNiftyPrice);
+
             log.info("ENTRY SHORT: Ratio {} is too High (Mean {}). SELL BN / BUY NIFTY", fmt(current), fmt(mean));
-            execute(OrderEvent.Type.SELL, "BANKNIFTY", 25, lastBankNiftyPrice);
-            execute(OrderEvent.Type.BUY, "NIFTY", 50, lastNiftyPrice);
+            execute(OrderEvent.Type.SELL, "BANKNIFTY", currentBnQty, lastBankNiftyPrice);
+            execute(OrderEvent.Type.BUY, "NIFTY", currentNiftyQty, lastNiftyPrice);
             currentPosition = Position.SHORT_SPREAD;
         }
         // Exit Short
         else if (currentPosition == Position.SHORT_SPREAD && divergence < EXIT_THRESHOLD) {
             log.info("EXIT SHORT: Ratio {} returned to Mean {}. PROFIT.", fmt(current), fmt(mean));
-            execute(OrderEvent.Type.BUY, "BANKNIFTY", 25, lastBankNiftyPrice); // Cover
-            execute(OrderEvent.Type.SELL, "NIFTY", 50, lastNiftyPrice);       // Sell
+            execute(OrderEvent.Type.BUY, "BANKNIFTY", currentBnQty, lastBankNiftyPrice); // Cover
+            execute(OrderEvent.Type.SELL, "NIFTY", currentNiftyQty, lastNiftyPrice);       // Sell
+
+            // Reset state
             currentPosition = Position.NONE;
+            currentBnQty = 0;
+            currentNiftyQty = 0;
         }
 
         // --- LOGIC: LONG SPREAD (Betting Ratio goes UP) ---
         else if (currentPosition == Position.NONE && divergence < -ENTRY_THRESHOLD) {
+            // Calculate entry quantities
+            currentBnQty = (int) (allocationPerLeg / lastBankNiftyPrice);
+            currentNiftyQty = (int) (allocationPerLeg / lastNiftyPrice);
+
             log.info("ENTRY LONG: Ratio {} is too Low (Mean {}). BUY BN / SELL NIFTY", fmt(current), fmt(mean));
-            execute(OrderEvent.Type.BUY, "BANKNIFTY", 25, lastBankNiftyPrice);
-            execute(OrderEvent.Type.SELL, "NIFTY", 50, lastNiftyPrice);
+            execute(OrderEvent.Type.BUY, "BANKNIFTY", currentBnQty, lastBankNiftyPrice);
+            execute(OrderEvent.Type.SELL, "NIFTY", currentNiftyQty, lastNiftyPrice);
             currentPosition = Position.LONG_SPREAD;
         }
         // Exit Long
         else if (currentPosition == Position.LONG_SPREAD && divergence > -EXIT_THRESHOLD) {
             log.info("EXIT LONG: Ratio {} returned to Mean {}. PROFIT.", fmt(current), fmt(mean));
-            execute(OrderEvent.Type.SELL, "BANKNIFTY", 25, lastBankNiftyPrice); // Sell
-            execute(OrderEvent.Type.BUY, "NIFTY", 50, lastNiftyPrice);          // Cover
+            execute(OrderEvent.Type.SELL, "BANKNIFTY", currentBnQty, lastBankNiftyPrice); // Sell
+            execute(OrderEvent.Type.BUY, "NIFTY", currentNiftyQty, lastNiftyPrice);          // Cover
+
+            // Reset state
             currentPosition = Position.NONE;
+            currentBnQty = 0;
+            currentNiftyQty = 0;
         }
     }
 
