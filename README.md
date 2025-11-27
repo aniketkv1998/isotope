@@ -47,5 +47,42 @@ Isotope supports a pluggable strategy architecture. Strategies implement the `St
 mvn clean install
 ```
 
+## Backtesting Workflow
+
+Isotope includes a "Research & Backtesting Toolkit" to simulate strategies against historical data.
+
+### 1. Fetch Historical Data
+Use the Python utility to download market data (requires `yfinance`).
+
+```bash
+# Install dependencies
+pip3 install yfinance pandas
+
+# Run the fetcher
+python3 tools/fetch_data.py
+```
+This saves 1-minute interval data for `NIFTY` and `BANKNIFTY` (last 7 days) to `src/main/resources/market_data.csv`.
+
+### 2. Run the Java Engine
+Configure the engine to use the CSV data source and execute your strategy.
+
+```bash
+# Run with default settings (uses market_data.csv if available)
+mvn clean compile exec:java -Dexec.mainClass="com.isotope.IsotopeApplication"
+```
+The engine will log executed trades to `trades.csv` in the project root.
+
+### 3. Analyze Results (Dashboard)
+Visualize the backtest performance using the Streamlit dashboard.
+
+```bash
+# Install dependencies
+pip3 install streamlit pandas
+
+# Launch the dashboard
+python3 -m streamlit run tools/dashboard.py
+```
+This opens a web UI showing Cumulative PnL, Win Rate, and Trade Logs.
+
 ## Disclaimer
 This software is for educational and research purposes. High-frequency trading involves significant financial risk. Use at your own risk.
