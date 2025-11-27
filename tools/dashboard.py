@@ -4,8 +4,9 @@ import os
 
 def load_data():
     if os.path.exists("trades.csv"):
+        # The CSV now has additional columns: fees, net_cash_flow, running_balance
         return pd.read_csv("trades.csv")
-    return pd.DataFrame(columns=["timestamp", "strategy_id", "symbol", "action", "quantity", "price"])
+    return pd.DataFrame(columns=["timestamp", "strategy_id", "symbol", "action", "quantity", "price", "fees", "net_cash_flow", "running_balance"])
 
 def main():
     st.set_page_config(page_title="Isotope Backtest Dashboard", layout="wide")
@@ -19,131 +20,46 @@ def main():
 
     # Process Data
     try:
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Convert timestamp to datetime (assuming it is in milliseconds as per Java code)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.sort_values('timestamp')
 
-        # Calculate PnL
-        # Assuming FIFO or simply realized PnL based on flat entry/exit assumptions is tricky without position tracking.
-        # Simple Approach:
-        # Cash Flow = -Price * Quantity (for BUY)
-        # Cash Flow = +Price * Quantity (for SELL)
-        # We will track a running cash balance.
-        # But to show "Cumulative PnL", we need to account for position value.
-        # However, without current market data, we can only show realized PnL or assuming trades close out.
-        # Let's assume the backtest closes all positions at the end or we just track Cash Flow + (Current Position * Last Price).
-        # But we don't have "Last Price" history here, only trade execution prices.
+        # Check if new columns exist
+        if 'running_balance' not in df.columns:
+            st.error("The 'trades.csv' file format is outdated. Please run the backtest again with the new engine.")
+            st.dataframe(df.head())
+            return
 
-        # Alternative: Just calculate realized PnL for matching trades.
-        # Given the complexity, let's implement a simple running PnL calculator based on closing out positions.
-        # Or simpler: Cumulative Cash Flow. But that dips when buying.
-        # Let's try to calculate Realized PnL.
+        # Metrics Calculation
+        initial_capital = 0.0
+        final_balance = 0.0
 
-        trades = df.to_dict('records')
-        positions = {} # symbol -> {'quantity': 0, 'avg_price': 0}
-        pnl_history = []
-        cumulative_pnl = 0
-        total_trades = 0
-        winning_trades = 0
+        # We can infer initial capital by reverse engineering the first row if needed,
+        # but better to assume the first row's running balance is the result of the first trade.
+        # running_balance_i = initial_capital + sum(net_cash_flow_0_to_i)
+        # So initial_capital = running_balance_0 - net_cash_flow_0
+        if not df.empty:
+            first_row = df.iloc[0]
+            initial_capital = first_row['running_balance'] - first_row['net_cash_flow']
+            final_balance = df.iloc[-1]['running_balance']
 
-        for trade in trades:
-            symbol = trade['symbol']
-            action = trade['action']
-            qty = trade['quantity']
-            price = trade['price']
-            timestamp = trade['timestamp']
+        total_fees = df['fees'].sum()
+        net_profit = final_balance - initial_capital
+        net_profit_pct = (net_profit / initial_capital * 100) if initial_capital > 0 else 0.0
 
-            if symbol not in positions:
-                positions[symbol] = {'quantity': 0, 'avg_price': 0}
+        # Layout Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Initial Capital", f"₹{initial_capital:,.2f}")
+        col2.metric("Final Balance", f"₹{final_balance:,.2f}")
+        col3.metric("Total Fees Paid", f"₹{total_fees:,.2f}")
+        col4.metric("Net Profit %", f"{net_profit_pct:.2f}%")
 
-            pos = positions[symbol]
-            current_qty = pos['quantity']
-            avg_price = pos['avg_price']
-
-            trade_pnl = 0
-
-            if action == 'BUY':
-                # Increasing long position or closing short
-                if current_qty < 0:
-                    # Closing short
-                    covered_qty = min(abs(current_qty), qty)
-                    trade_pnl = (avg_price - price) * covered_qty
-                    remaining_qty = qty - covered_qty
-
-                    # Update position
-                    new_qty = current_qty + covered_qty # moves towards 0
-                    if new_qty == 0:
-                        pos['quantity'] = 0
-                        pos['avg_price'] = 0
-                    else:
-                         pos['quantity'] = new_qty
-
-                    # If we flipped to long
-                    if remaining_qty > 0:
-                        pos['quantity'] = remaining_qty
-                        pos['avg_price'] = price
-
-                else:
-                    # Adding to long
-                    total_cost = (current_qty * avg_price) + (qty * price)
-                    pos['quantity'] = current_qty + qty
-                    pos['avg_price'] = total_cost / pos['quantity']
-
-            elif action == 'SELL':
-                # Closing long or opening short
-                if current_qty > 0:
-                    # Closing long
-                    sold_qty = min(current_qty, qty)
-                    trade_pnl = (price - avg_price) * sold_qty
-                    remaining_qty = qty - sold_qty
-
-                    # Update position
-                    new_qty = current_qty - sold_qty
-                    if new_qty == 0:
-                        pos['quantity'] = 0
-                        pos['avg_price'] = 0
-                    else:
-                        pos['quantity'] = new_qty
-
-                    # If flipped to short
-                    if remaining_qty > 0:
-                        pos['quantity'] = -remaining_qty
-                        pos['avg_price'] = price
-
-                else:
-                    # Adding to short
-                    total_entry = (abs(current_qty) * avg_price) + (qty * price)
-                    pos['quantity'] = current_qty - qty
-                    pos['avg_price'] = total_entry / abs(pos['quantity'])
-
-            if trade_pnl != 0:
-                cumulative_pnl += trade_pnl
-                total_trades += 1
-                if trade_pnl > 0:
-                    winning_trades += 1
-
-            pnl_history.append({'timestamp': timestamp, 'cumulative_pnl': cumulative_pnl})
-
-        pnl_df = pd.DataFrame(pnl_history)
-
-        # Metrics
-        total_profit = cumulative_pnl
-        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-
-        # Layout
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Profit", f"{total_profit:,.2f}")
-        col2.metric("Win Rate", f"{win_rate:.2f}%")
-        col3.metric("Total Trades (Closed)", total_trades)
-
-        # Chart
-        st.subheader("Cumulative PnL Over Time")
-        if not pnl_df.empty:
-            st.line_chart(pnl_df.set_index('timestamp')['cumulative_pnl'])
-        else:
-            st.info("No closed trades to show PnL.")
+        # Chart: Running Balance Over Time
+        st.subheader("Account Balance Curve")
+        st.line_chart(df.set_index('timestamp')['running_balance'])
 
         # Raw Data
-        st.subheader("Raw Trade List")
+        st.subheader("Trade Log")
         st.dataframe(df)
 
     except Exception as e:

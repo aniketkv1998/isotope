@@ -1,10 +1,12 @@
 package com.isotope.core;
 
 import com.isotope.adapter.OrderExecutionAdapter;
+import com.isotope.config.AppConfig;
 import com.isotope.model.MarketDataEvent;
 import com.isotope.model.MarketDataEventFactory;
 import com.isotope.model.OrderEvent;
 import com.isotope.model.OrderEventFactory;
+import com.isotope.service.IndianFuturesFeeCalculator;
 import com.isotope.strategy.Strategy;
 import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.EventHandler;
@@ -33,7 +35,7 @@ public class IsotopeEngine implements OrderPublisher {
 
     private static final int BUFFER_SIZE = 1024; // Must be power of 2
 
-    public IsotopeEngine() {
+    public IsotopeEngine(AppConfig appConfig, IndianFuturesFeeCalculator feeCalculator) {
         // 1. Setup Output Disruptor (Orders) first, so strategies can use it
         OrderEventFactory orderFactory = new OrderEventFactory();
         orderDisruptor = new Disruptor<>(
@@ -45,7 +47,7 @@ public class IsotopeEngine implements OrderPublisher {
         );
 
         // Connect Consumer: OrderExecutionAdapter
-        orderDisruptor.handleEventsWith(new OrderExecutionAdapter());
+        orderDisruptor.handleEventsWith(new OrderExecutionAdapter(appConfig, feeCalculator));
 
         orderRingBuffer = orderDisruptor.getRingBuffer();
 
