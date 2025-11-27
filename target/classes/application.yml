@@ -1,0 +1,15 @@
+engine:
+  data-source:
+    type: CSV
+    csv:
+      file-path: market_data.csv
+      replay-speed: 1x
+
+isotope:
+  kite:
+    api-key: "xxx"
+    access-token: "xxx"
+    api-secret: "xxx"
+  strategy:
+    enabled: true
+    risk-limit: 10000
