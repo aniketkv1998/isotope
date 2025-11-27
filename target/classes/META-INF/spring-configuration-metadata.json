@@ -1,6 +1,16 @@
 {
   "groups": [
     {
+      "name": "engine.data-source",
+      "type": "com.isotope.config.MarketDataConfig",
+      "sourceType": "com.isotope.config.MarketDataConfig"
+    },
+    {
+      "name": "engine.data-source.csv",
+      "type": "com.isotope.config.MarketDataConfig$CsvConfig",
+      "sourceType": "com.isotope.config.MarketDataConfig"
+    },
+    {
       "name": "isotope",
       "type": "com.isotope.config.AppConfig",
       "sourceType": "com.isotope.config.AppConfig"
@@ -17,6 +27,21 @@
     }
   ],
   "properties": [
+    {
+      "name": "engine.data-source.csv.file-path",
+      "type": "java.lang.String",
+      "sourceType": "com.isotope.config.MarketDataConfig$CsvConfig"
+    },
+    {
+      "name": "engine.data-source.csv.replay-speed",
+      "type": "java.lang.String",
+      "sourceType": "com.isotope.config.MarketDataConfig$CsvConfig"
+    },
+    {
+      "name": "engine.data-source.type",
+      "type": "java.lang.String",
+      "sourceType": "com.isotope.config.MarketDataConfig"
+    },
     {
       "name": "isotope.kite.access-token",
       "type": "java.lang.String",

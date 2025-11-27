@@ -1,6 +1,5 @@
 package com.isotope.core;
 
-import com.isotope.adapter.MarketDataAdapter;
 import com.isotope.adapter.OrderExecutionAdapter;
 import com.isotope.model.MarketDataEvent;
 import com.isotope.model.MarketDataEventFactory;
@@ -13,7 +12,6 @@ import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
-import com.zerodhatech.kiteconnect.KiteConnect;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -31,17 +29,11 @@ public class IsotopeEngine implements OrderPublisher {
     @Getter
     private final RingBuffer<OrderEvent> orderRingBuffer;
 
-    @Getter
-    private final MarketDataAdapter marketDataAdapter;
     private final List<Strategy> strategies = new ArrayList<>();
 
     private static final int BUFFER_SIZE = 1024; // Must be power of 2
 
-    private final KiteConnect kiteConnect;
-
-    public IsotopeEngine(KiteConnect kiteConnect) {
-        this.kiteConnect = kiteConnect;
-
+    public IsotopeEngine() {
         // 1. Setup Output Disruptor (Orders) first, so strategies can use it
         OrderEventFactory orderFactory = new OrderEventFactory();
         orderDisruptor = new Disruptor<>(
@@ -64,17 +56,26 @@ public class IsotopeEngine implements OrderPublisher {
                 marketDataFactory,
                 BUFFER_SIZE,
                 DaemonThreadFactory.INSTANCE,
-                ProducerType.SINGLE, // Single producer (MarketDataAdapter)
-                new BlockingWaitStrategy() // BusySpinWaitStrategy for lower latency in prod
+                ProducerType.MULTI, // ProducerType.MULTI because we might have different threads publishing or just safe default
+                // Actually, if we use Single Writer Principle we want SINGLE, but Adapter might run on its own thread.
+                // CsvProducer runs on executor. KiteTicker runs on its own thread.
+                // If we guarantee only one producer thread active at a time, we can use SINGLE.
+                // But the producer interface doesn't guarantee single threaded access to ringbuffer if we had multiple producers (which we don't for now).
+                // Let's stick to MULTI to be safe or SINGLE if we are sure.
+                // The previous code had SINGLE with MarketDataAdapter.
+                // MarketDataAdapter was just a wrapper.
+                // Here the producer is external.
+                // Let's use SINGLE for performance if we assume 1 active producer.
+                // But wait, CsvProducer uses a thread. Kite uses a thread.
+                // As long as there is only ONE thread calling publish(), SINGLE is fine.
+                // We only inject ONE producer. So SINGLE is fine.
+                new BlockingWaitStrategy()
         );
 
         // Connect Consumer: Strategy Processor
         marketDataDisruptor.handleEventsWith(new StrategyEventHandler());
 
         marketDataRingBuffer = marketDataDisruptor.getRingBuffer();
-
-        // 3. Setup Producer Adapter
-        marketDataAdapter = new MarketDataAdapter(marketDataRingBuffer);
     }
 
     public void start() {
