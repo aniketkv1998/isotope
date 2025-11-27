@@ -13,6 +13,7 @@ import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
+import com.zerodhatech.kiteconnect.KiteConnect;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,7 +36,11 @@ public class IsotopeEngine implements OrderPublisher {
 
     private static final int BUFFER_SIZE = 1024; // Must be power of 2
 
-    public IsotopeEngine() {
+    private final KiteConnect kiteConnect;
+
+    public IsotopeEngine(KiteConnect kiteConnect) {
+        this.kiteConnect = kiteConnect;
+
         // 1. Setup Output Disruptor (Orders) first, so strategies can use it
         OrderEventFactory orderFactory = new OrderEventFactory();
         orderDisruptor = new Disruptor<>(
