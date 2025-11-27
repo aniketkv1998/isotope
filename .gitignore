@@ -2,3 +2,5 @@
 /shelf/
 /.idea/workspace.xml
 target/**
+.idea/**
+isotope-engine.iml
