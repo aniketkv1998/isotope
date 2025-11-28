@@ -6,7 +6,6 @@ import com.isotope.model.MarketDataEvent;
 import com.isotope.model.MarketDataEventFactory;
 import com.isotope.model.OrderEvent;
 import com.isotope.model.OrderEventFactory;
-import com.isotope.service.IndianFuturesFeeCalculator;
 import com.isotope.strategy.Strategy;
 import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.EventHandler;
