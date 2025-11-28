@@ -1,7 +1,7 @@
 package com.isotope.adapter;
 
 import com.isotope.model.OrderEvent;
-import com.isotope.service.IndianFuturesFeeCalculator;
+import com.isotope.service.IndianDerivativesFeeCalculator;
 import com.lmax.disruptor.EventHandler;
 import lombok.extern.slf4j.Slf4j;
 import java.io.BufferedWriter;
@@ -14,21 +14,23 @@ import java.util.Map;
 public class OrderExecutionAdapter implements EventHandler<OrderEvent> {
 
     private BufferedWriter csvWriter;
-    private final IndianFuturesFeeCalculator feeCalculator;
-    private double runningBalance; // Comes from Config now
+    private final IndianDerivativesFeeCalculator feeCalculator;
+    private double runningBalance;
+    private final String executionMode;
 
     // Position Tracking: Symbol -> Average Entry Price
     private final Map<String, Double> entryPrices = new HashMap<>();
     // Position Tracking: Symbol -> Net Quantity (+Long, -Short)
     private final Map<String, Integer> positions = new HashMap<>();
 
-    public OrderExecutionAdapter(IndianFuturesFeeCalculator feeCalculator, double initialCapital) {
+    public OrderExecutionAdapter(IndianDerivativesFeeCalculator feeCalculator, double initialCapital, String executionMode) {
         this.feeCalculator = feeCalculator;
         this.runningBalance = initialCapital;
+        this.executionMode = executionMode;
 
         try {
             csvWriter = new BufferedWriter(new FileWriter("trades.csv", false));
-            csvWriter.write("timestamp,strategy_id,symbol,action,quantity,price,fees,net_cash_flow,running_balance\n");
+            csvWriter.write("timestamp,strategy_id,symbol,action,quantity,price,fees,net_cash_flow,running_balance,fee_saving\n");
             csvWriter.flush();
         } catch (IOException e) {
             log.error("Failed to init CSV", e);
@@ -44,8 +46,43 @@ public class OrderExecutionAdapter implements EventHandler<OrderEvent> {
             int quantity = event.getQuantity();
             String symbol = event.getTradingSymbol();
 
-            // 1. Fees (Always Paid)
-            double fees = feeCalculator.calculateTotalFee(event.getType(), price, quantity);
+            double fees;
+            double feeSaving = 0.0;
+
+            if ("SYNTHETIC".equalsIgnoreCase(executionMode)) {
+                // Estimate ATM Premium: Price * 0.0085
+                double estimatedPremium = price * 0.0085;
+
+                // Calculate Fees for Leg 1 (Call) + Fees for Leg 2 (Put)
+                // Long Synthetic (Bullish): Buy Call + Sell Put
+                // Short Synthetic (Bearish): Buy Put + Sell Call
+
+                double callFee;
+                double putFee;
+
+                if (event.getType() == OrderEvent.Type.BUY) {
+                    // Long Synthetic: Buy Call + Sell Put
+                    callFee = feeCalculator.calculateOptionFee(OrderEvent.Type.BUY, estimatedPremium, quantity);
+                    putFee = feeCalculator.calculateOptionFee(OrderEvent.Type.SELL, estimatedPremium, quantity);
+                } else {
+                    // Short Synthetic: Buy Put + Sell Call
+                    // Correction based on instructions: "Short Synthetic (Bearish): Buy Put + Sell Call"
+                    // Typically Short Synthetic Futures is Long Put + Short Call
+                    putFee = feeCalculator.calculateOptionFee(OrderEvent.Type.BUY, estimatedPremium, quantity);
+                    callFee = feeCalculator.calculateOptionFee(OrderEvent.Type.SELL, estimatedPremium, quantity);
+                }
+
+                fees = callFee + putFee;
+
+                // Calculate Futures Fee for comparison
+                double futuresFee = feeCalculator.calculateTotalFee(event.getType(), price, quantity);
+                feeSaving = futuresFee - fees;
+
+            } else {
+                // FUTURES
+                fees = feeCalculator.calculateTotalFee(event.getType(), price, quantity);
+            }
+
             double netCashFlow = -fees;
 
             // 2. PnL Logic (Realized only on Closing)
@@ -89,9 +126,9 @@ public class OrderExecutionAdapter implements EventHandler<OrderEvent> {
 
             // 4. Log
             if (csvWriter != null) {
-                csvWriter.write(String.format("%d,%s,%s,%s,%d,%.2f,%.2f,%.2f,%.2f%n",
-                        event.getTimestamp(), // Uses CSV Timestamp
-                        event.getStrategyId(), symbol, event.getType(), quantity, price, fees, netCashFlow, runningBalance));
+                csvWriter.write(String.format("%d,%s,%s,%s,%d,%.2f,%.2f,%.2f,%.2f,%.2f%n",
+                        event.getTimestamp(),
+                        event.getStrategyId(), symbol, event.getType(), quantity, price, fees, netCashFlow, runningBalance, feeSaving));
                 csvWriter.flush();
             }
 

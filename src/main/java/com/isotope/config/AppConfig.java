@@ -34,6 +34,7 @@ public class AppConfig {
         private boolean enabled;
         private double riskLimit;
         private double allocationPerLeg = 1500000.0;
+        private String executionMode = "FUTURES"; // FUTURES or SYNTHETIC
     }
 
     @Data

@@ -15,6 +15,8 @@ isotope:
     enabled: true
     risk-limit: 10000
     allocation-per-leg: 2000000.0
+#    execution-mode: FUTURES
+    execution-mode: SYNTHETIC
   backtest:
     initial-capital: 200000.0
 
