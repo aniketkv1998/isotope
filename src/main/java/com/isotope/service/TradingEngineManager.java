@@ -21,7 +21,7 @@ public class TradingEngineManager {
 
     private final AppConfig appConfig;
     private final MarketDataProducer marketDataProducer; // Injected by Spring (Kite, CSV, or Yahoo)
-    private final IndianFuturesFeeCalculator feeCalculator;
+    private final IndianDerivativesFeeCalculator feeCalculator;
     private IsotopeEngine isotopeEngine;
     private final ExecutorService engineExecutor = Executors.newSingleThreadExecutor();
 
@@ -30,7 +30,8 @@ public class TradingEngineManager {
         log.info("Initializing Trading Engine Manager...");
 
         double capital = appConfig.getBacktest().getInitialCapital();
-        OrderExecutionAdapter adapter = new OrderExecutionAdapter(feeCalculator, capital);
+        String executionMode = appConfig.getStrategy().getExecutionMode();
+        OrderExecutionAdapter adapter = new OrderExecutionAdapter(feeCalculator, capital, executionMode);
 
         // 1. Instantiate Core Engine (Pure Java)
         isotopeEngine = new IsotopeEngine(adapter);
